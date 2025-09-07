@@ -1,0 +1,40 @@
+name: VolunteerPunish
+version: 1.0.0
+main: cn.popcraft.volunteerpunish.VolunteerPunish
+api-version: 1.16
+author: PopCraft
+description: 志愿者处罚系统
+commands:
+  vp:
+    description: Volunteer punishment management command
+    usage: /vp <subcommand>
+    permission: volunteerpunish.use
+    aliases: [volunteerpunish]
+permissions:
+  volunteerpunish.use:
+    description: Allows use of the VolunteerPunish command
+    default: true
+  volunteerpunish.volunteer.ban:
+    description: Allows banning players
+    default: op
+  volunteerpunish.volunteer.mute:
+    description: Allows muting players
+    default: op
+  volunteerpunish.admin.unban:
+    description: Allows unbanning players
+    default: op
+  volunteerpunish.admin.unmute:
+    description: Allows unmuting players
+    default: op
+  volunteerpunish.admin.setid:
+    description: Allows setting volunteer IDs
+    default: op
+  volunteerpunish.admin.removeid:
+    description: Allows removing volunteer IDs
+    default: op
+  volunteerpunish.admin.history:
+    description: Allows viewing punishment history
+    default: op
+  volunteerpunish.admin.reload:
+    description: Allows reloading the plugin configuration
+    default: op

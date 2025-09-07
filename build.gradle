@@ -1,0 +1,64 @@
+plugins {
+    id 'java'
+}
+
+group = 'cn.popcraft'
+version = '1.0.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'spigotmc-repo'
+        url = 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/'
+    }
+    maven {
+        name = 'sonatype'
+        url = 'https://oss.sonatype.org/content/groups/public/'
+    }
+    // BungeeCord仓库
+    maven {
+        name = 'bungeecord-repo'
+        url = 'https://oss.sonatype.org/content/repositories/snapshots'
+    }
+    // LuckPerms仓库
+    maven {
+        name = 'luck-repo'
+        url = 'https://repo.lucko.me/'
+    }
+}
+
+dependencies {
+    compileOnly 'org.spigotmc:spigot-api:1.16.5-R0.1-SNAPSHOT'
+    
+    // For database operations
+    implementation 'com.zaxxer:HikariCP:4.0.3'
+    
+    // For async operations
+    implementation 'org.jetbrains:annotations:20.1.0'
+    
+    // For BungeeCord chat API
+    compileOnly 'net.md-5:bungeecord-api:1.16-R0.4'
+    
+    // LuckPerms API
+    compileOnly 'net.luckperms:api:5.4'
+    
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    options.release = 8
+}
+
+// 创建一个包含所有依赖的fat jar
+task fatJar(type: Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}

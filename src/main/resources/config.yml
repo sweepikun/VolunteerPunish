@@ -1,0 +1,102 @@
+# VolunteerPunish 配置文件
+
+# 数据库配置
+database:
+  # 数据库类型: sqlite 或 mysql
+  type: sqlite
+  
+  # SQLite 配置
+  sqlite:
+    path: database.db
+  
+  # MySQL 配置
+  mysql:
+    host: localhost
+    port: 3306
+    database: volunteerpunish
+    username: root
+    password: ''
+
+# 身份组配置
+groups:
+  # 初级志愿者
+  beginner:
+    # 配额设置
+    quotas:
+      ban: 3      # 每日封禁配额
+      mute: 5     # 每日禁言配额
+    
+    # 可用的处罚时长（秒）
+    durations:
+      ban:
+        - 3600    # 1小时
+        - 21600   # 6小时
+        - 86400   # 1天
+        - 604800  # 7天
+      mute:
+        - 600     # 10分钟
+        - 3600    # 1小时
+        - 7200    # 2小时
+        - 21600   # 6小时
+    
+    # 是否允许自定义原因
+    reasons:
+      ban: true
+      mute: true
+  
+  # 中级志愿者
+  intermediate:
+    quotas:
+      ban: 5
+      mute: 10
+    durations:
+      ban:
+        - 3600    # 1小时
+        - 21600   # 6小时
+        - 86400   # 1天
+        - 259200  # 3天
+        - 604800  # 7天
+        - 2592000 # 30天
+      mute:
+        - 600     # 10分钟
+        - 3600    # 1小时
+        - 7200    # 2小时
+        - 21600   # 6小时
+        - 86400   # 1天
+    reasons:
+      ban: true
+      mute: true
+
+# 每日配额重置设置
+daily-reset:
+  enabled: true
+  timezone: UTC
+
+# 处罚通知设置
+notification:
+  # 玩家登录时是否显示处罚通知
+  login:
+    enabled: true
+    
+  # 通知消息模板（支持颜色代码）
+  messages:
+    ban: "&c你已被志愿者 #{volunteer_id} 封禁 {duration}，原因：{reason}。解封时间：{unban_time}"
+    mute: "&c你已被志愿者 #{volunteer_id} 禁言 {duration}，原因：{reason}"
+    
+  # Title通知设置
+  title:
+    # 封禁时显示的Title
+    ban:
+      title: "&c你已被封禁"
+      subtitle: "&7原因: {reason}"
+    # 禁言时显示的Title
+    mute:
+      title: "&c你已被禁言"
+      subtitle: "&7原因: {reason}"
+      
+  # ActionBar通知设置
+  actionbar:
+    # 封禁时显示的ActionBar消息
+    ban: "&c你当前处于封禁状态"
+    # 禁言时显示的ActionBar消息
+    mute: "&c你当前处于禁言状态"
