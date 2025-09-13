@@ -1,8 +1,5 @@
 name: Publish Release
 
-# 支持两种触发方式：
-# 1. 推送符合 v*.*.* 的 tag（自动）
-# 2. 手动在 GitHub Actions 页面触发（手动）
 on:
   push:
     tags:
@@ -35,13 +32,18 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
+      # 👇 替换 gradlew：安装 Gradle（官方推荐方式）
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'  # 👈 请根据你的项目需要修改版本号（如 7.6, 8.0, 8.7 等）
+          # 可选：缓存依赖（推荐）
+          cache-read-only: false
 
+      # 👇 使用 gradle 命令代替 ./gradlew
       - name: Build with Gradle
-        run: ./gradlew build
+        run: gradle build --no-daemon  # --no-daemon 适合 CI 环境
 
       # 查找构建产物（JAR 文件）
       - name: Find build artifacts
@@ -58,7 +60,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          # 如果是手动触发，使用输入的 tag_name；否则使用推送的 tag
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
           files: ${{ env.ARTIFACTS }}
           generate_release_notes: true
