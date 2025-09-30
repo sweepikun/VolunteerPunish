@@ -4,6 +4,8 @@ main: cn.popcraft.volunteerpunish.VolunteerPunish
 api-version: 1.16
 author: PopCraft
 description: 志愿者处罚系统
+libraries:
+  - com.zaxxer:HikariCP:4.0.3
 commands:
   vp:
     description: Volunteer punishment management command
