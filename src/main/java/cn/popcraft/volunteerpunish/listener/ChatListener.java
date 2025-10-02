@@ -2,6 +2,7 @@ package cn.popcraft.volunteerpunish.listener;
 
 import cn.popcraft.volunteerpunish.VolunteerPunish;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 
@@ -12,7 +13,7 @@ public class ChatListener implements Listener {
         this.plugin = plugin;
     }
     
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         // 检查玩家是否被禁言
         if (plugin.isMuted(event.getPlayer().getUniqueId())) {

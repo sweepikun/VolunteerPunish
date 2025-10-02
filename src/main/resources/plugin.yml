@@ -34,6 +34,9 @@ permissions:
   volunteerpunish.admin.removeid:
     description: Allows removing volunteer IDs
     default: op
+  volunteerpunish.admin.setgroup:
+    description: Allows setting volunteer groups
+    default: op
   volunteerpunish.admin.history:
     description: Allows viewing punishment history
     default: op

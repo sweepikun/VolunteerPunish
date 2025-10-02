@@ -26,6 +26,7 @@ public class VpCommand extends BaseCommand {
     private final HistoryCommand historyCommand;
     private final SetIdCommand setIdCommand;
     private final RemoveIdCommand removeIdCommand;
+    private final GroupCommand groupCommand; // 新增GroupCommand
 
     public VpCommand(VolunteerPunish plugin) {
         super(plugin);
@@ -35,6 +36,7 @@ public class VpCommand extends BaseCommand {
         this.historyCommand = new HistoryCommand(plugin);
         this.setIdCommand = new SetIdCommand(plugin);
         this.removeIdCommand = new RemoveIdCommand(plugin);
+        this.groupCommand = new GroupCommand(plugin); // 初始化GroupCommand
     }
 
     @Override
@@ -71,6 +73,9 @@ public class VpCommand extends BaseCommand {
             case "reload":
                 handleReloadCommand(sender);
                 break;
+            case "group": // 添加对group命令的处理
+                groupCommand.execute(sender, command, label, args);
+                break;
             case "help":
                 sendHelpMessage(sender);
                 break;
@@ -85,7 +90,7 @@ public class VpCommand extends BaseCommand {
     protected List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             // 补全子命令
-            List<String> subCommands = Arrays.asList("ban", "mute", "unban", "unmute", "history", "setid", "removeid", "reload", "help");
+            List<String> subCommands = Arrays.asList("ban", "mute", "unban", "unmute", "history", "setid", "removeid", "group", "reload", "help");
             return subCommands.stream()
                     .filter(cmd -> cmd.startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());
@@ -112,6 +117,8 @@ public class VpCommand extends BaseCommand {
                         }
                     }
                     break;
+                case "group": // 添加group命令的tab补全
+                    return groupCommand.tabComplete(sender, command, alias, args);
                 case "reload":
                 case "help":
                     // 这些命令没有更多参数
@@ -184,6 +191,8 @@ public class VpCommand extends BaseCommand {
         sender.sendMessage("§a/vp history [玩家] §7- 查看处罚历史记录");
         sender.sendMessage("§a/vp setid <玩家> <ID> §7- 设置志愿者ID");
         sender.sendMessage("§a/vp removeid <玩家> §7- 移除志愿者身份");
+        sender.sendMessage("§a/vp group §7- 查看自己的身份组");
+        sender.sendMessage("§a/vp group <志愿者ID> <组名> §7- 修改志愿者身份组");
         sender.sendMessage("§a/vp reload §7- 重新加载配置文件");
         sender.sendMessage("§a/vp help §7- 显示此帮助信息");
         sender.sendMessage("§e----------------------------------------");
