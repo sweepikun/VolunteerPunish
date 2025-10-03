@@ -303,16 +303,38 @@ public class VpCommand extends BaseCommand {
                         }
                     });
                 }).exceptionally(throwable -> {
+                    // 即使增加计数失败，也要确保玩家被踢出
+                    plugin.banPlayer(targetUuid);
+                    
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage("§c封禁玩家时发生错误");
+                        sender.sendMessage("§c封禁玩家时发生错误，但玩家已被踢出");
                         plugin.getLogger().log(Level.SEVERE, "增加志愿者封禁计数时发生错误", throwable);
+                        
+                        // 如果玩家在线，确保他们被踢出
+                        Player onlineTarget = Bukkit.getPlayer(targetUuid);
+                        if (onlineTarget != null && onlineTarget.isOnline()) {
+                            String banReason = reason != null ? reason : "违反服务器规定";
+                            onlineTarget.kickPlayer("§c你已被封禁\n§7原因: " + banReason + 
+                                (duration > 0 ? ("\n§7时长: " + duration + "秒") : "\n§7类型: 永久封禁"));
+                        }
                     });
                     return null;
                 });
             }).exceptionally(throwable -> {
+                // 即使保存记录失败，也要确保玩家被踢出
+                plugin.banPlayer(targetUuid);
+                
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage("§c封禁玩家时发生错误");
+                    sender.sendMessage("§c封禁玩家时发生错误，但玩家已被踢出");
                     plugin.getLogger().log(Level.SEVERE, "保存处罚记录时发生错误", throwable);
+                    
+                    // 如果玩家在线，确保他们被踢出
+                    Player onlineTarget = Bukkit.getPlayer(targetUuid);
+                    if (onlineTarget != null && onlineTarget.isOnline()) {
+                        String banReason = reason != null ? reason : "违反服务器规定";
+                        onlineTarget.kickPlayer("§c你已被封禁\n§7原因: " + banReason + 
+                            (duration > 0 ? ("\n§7时长: " + duration + "秒") : "\n§7类型: 永久封禁"));
+                    }
                 });
                 return null;
             });

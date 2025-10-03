@@ -191,7 +191,7 @@ public class VolunteerPunish extends JavaPlugin {
         // 如果玩家在线，则将其踢出服务器
         Player player = Bukkit.getPlayer(uuid);
         if (player != null && player.isOnline()) {
-            player.kickPlayer("§c你已被封禁");
+            player.kickPlayer("§c你已被封禁\n§7请遵守服务器规定");
         }
     }
     
