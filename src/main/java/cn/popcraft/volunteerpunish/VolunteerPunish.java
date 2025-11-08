@@ -184,15 +184,42 @@ public class VolunteerPunish extends JavaPlugin {
     }
     
     public void banPlayer(UUID uuid) {
+        banPlayer(uuid, null, "被志愿者封禁");
+    }
+    
+    public void banPlayer(UUID uuid, Long durationSeconds, String reason) {
         if (!isPluginEnabled) {
             return;
         }
         
-        // 如果玩家在线，则将其踢出服务器
-        Player player = Bukkit.getPlayer(uuid);
-        if (player != null && player.isOnline()) {
-            player.kickPlayer("§c你已被封禁\n§7请遵守服务器规定");
+        // 获取玩家信息
+        OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+        String playerName = player.getName() != null ? player.getName() : "Unknown";
+        
+        // 计算过期时间
+        Date expiration = null;
+        if (durationSeconds != null && durationSeconds > 0) {
+            expiration = new Date(System.currentTimeMillis() + (durationSeconds * 1000));
         }
+        
+        // 使用Minecraft服务器官方banlist API
+        org.bukkit.BanList banList = getServer().getBanList(org.bukkit.BanList.Type.PROFILE);
+        banList.addBan(uuid.toString(), reason, expiration, "VolunteerPunish Plugin");
+        
+        // 如果玩家在线，则将其踢出服务器
+        Player onlinePlayer = Bukkit.getPlayer(uuid);
+        if (onlinePlayer != null && onlinePlayer.isOnline()) {
+            String kickMessage = "§c你已被封禁\n§7原因: " + reason;
+            if (expiration != null) {
+                kickMessage += "\n§7解封时间: " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(expiration);
+            } else {
+                kickMessage += "\n§7类型: 永久封禁";
+            }
+            onlinePlayer.kickPlayer(kickMessage);
+        }
+        
+        getLogger().info("已封禁玩家: " + playerName + " (" + uuid + ")" + 
+            (expiration != null ? "，时长: " + durationSeconds + "秒" : "，永久"));
     }
     
     public void mutePlayer(UUID uuid) {
@@ -205,17 +232,27 @@ public class VolunteerPunish extends JavaPlugin {
             return;
         }
         
+        // 获取玩家信息用于日志
+        OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+        String playerName = player.getName() != null ? player.getName() : "Unknown";
+        
+        // 从Minecraft服务器官方banlist中移除玩家
+        org.bukkit.BanList banList = getServer().getBanList(org.bukkit.BanList.Type.PROFILE);
+        banList.pardon(uuid.toString());
+        
         // 异步停用该玩家的所有封禁记录
         CompletableFuture.runAsync(() -> {
             try {
                 databaseManager.deactivatePunishments(uuid, Punishment.Type.BAN).join();
                 
                 // 如果玩家在线，发送解封通知
-                Player player = Bukkit.getPlayer(uuid);
-                if (player != null && player.isOnline()) {
+                Player onlinePlayer = Bukkit.getPlayer(uuid);
+                if (onlinePlayer != null && onlinePlayer.isOnline()) {
                     getServer().getScheduler().runTask(this, () -> 
-                        player.sendMessage("§a你已被解封"));
+                        onlinePlayer.sendMessage("§a你已被解封"));
                 }
+                
+                getLogger().info("已解封玩家: " + playerName + " (" + uuid + ")");
             } catch (Exception e) {
                 getLogger().severe("解封玩家时发生错误: " + e.getMessage());
             }

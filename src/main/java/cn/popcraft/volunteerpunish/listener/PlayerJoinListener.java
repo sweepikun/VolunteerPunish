@@ -26,35 +26,65 @@ public class PlayerJoinListener implements Listener {
     
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        if (!plugin.getConfigManager().isEnableLoginNotification()) {
-            return;
-        }
-        
         Player player = event.getPlayer();
+        
+        // 检查玩家是否被封禁
         CompletableFuture<List<Punishment>> future = plugin.getDatabase().getPunishmentsByTargetUuid(player.getUniqueId());
         
         future.thenAccept(punishments -> {
-            // 查找活跃的处罚
+            // 查找活跃的封禁处罚
+            Punishment activeBan = null;
             for (Punishment punishment : punishments) {
-                if (!punishment.isActive()) {
-                    continue;
+                if (punishment.getType() == Punishment.Type.BAN && punishment.isActive()) {
+                    // 检查是否已过期
+                    if (punishment.getExpiresAt() == null || punishment.getExpiresAt().after(new Date())) {
+                        activeBan = punishment;
+                        break;
+                    }
                 }
-                
-                // 检查是否已过期
-                if (punishment.getExpiresAt() != null && punishment.getExpiresAt().before(new Date())) {
-                    continue;
-                }
-                
-                // 显示处罚通知
+            }
+            
+            if (activeBan != null) {
+                // 玩家被封禁，阻止加入并显示封禁信息
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    showPunishmentNotification(player, punishment);
+                    String banReason = activeBan.getReason() != null ? activeBan.getReason() : "违反服务器规定";
+                    String duration = "永久";
+                    if (activeBan.getDuration() > 0) {
+                        duration = formatDuration(activeBan.getDuration());
+                    }
+                    
+                    String kickMessage = "§c你已被封禁\n" +
+                                       "§7原因: " + banReason + "\n" +
+                                       "§7时长: " + duration + "\n" +
+                                       "§7封禁者: " + activeBan.getVolunteerId();
+                    
+                    player.kickPlayer(ChatColor.translateAlternateColorCodes('&', kickMessage));
+                    event.setJoinMessage(null); // 清除加入消息
                 });
+                return;
+            }
+            
+            // 如果没有封禁但有其他处罚（如禁言），则显示通知
+            if (plugin.getConfigManager().isEnableLoginNotification()) {
+                Punishment activeMute = null;
+                for (Punishment punishment : punishments) {
+                    if (punishment.getType() == Punishment.Type.MUTE && punishment.isActive()) {
+                        // 检查是否已过期
+                        if (punishment.getExpiresAt() == null || punishment.getExpiresAt().after(new Date())) {
+                            activeMute = punishment;
+                            break;
+                        }
+                    }
+                }
                 
-                // 目前只显示最新的一个处罚
-                break;
+                if (activeMute != null) {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        showPunishmentNotification(player, activeMute);
+                    });
+                }
             }
         }).exceptionally(throwable -> {
-            plugin.getLogger().severe("Failed to check punishments for player " + player.getName() + ": " + throwable.getMessage());
+            plugin.getLogger().severe("检查玩家处罚状态时发生错误: " + throwable.getMessage());
             return null;
         });
     }
