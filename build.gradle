@@ -16,10 +16,6 @@ repositories {
         url = 'https://oss.sonatype.org/content/groups/public/'
     }
     // BungeeCord仓库
-    maven {
-        name = 'bungeecord-repo'
-        url = 'https://oss.sonatype.org/content/repositories/snapshots'
-    }
     // LuckPerms仓库
     maven {
         name = 'luck-repo'
@@ -35,9 +31,6 @@ dependencies {
     
     // For async operations
     implementation 'org.jetbrains:annotations:20.1.0'
-    
-    // For BungeeCord chat API
-    compileOnly 'net.md-5:bungeecord-api:1.16-R0.4'
     
     // LuckPerms API
     compileOnly 'net.luckperms:api:5.4'
