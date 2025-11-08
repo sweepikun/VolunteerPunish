@@ -389,6 +389,28 @@ public class VolunteerPunish extends JavaPlugin {
         });
     }
     
+    public void testDatabaseConnection() {
+        if (databaseManager == null) {
+            getLogger().warning("数据库管理器未初始化");
+            return;
+        }
+        
+        try {
+            databaseManager.testConnection().thenAccept(success -> {
+                if (success) {
+                    getLogger().info("数据库连接测试成功");
+                } else {
+                    getLogger().warning("数据库连接测试失败");
+                }
+            }).exceptionally(throwable -> {
+                getLogger().severe("数据库连接测试时发生错误: " + throwable.getMessage());
+                return null;
+            });
+        } catch (Exception e) {
+            getLogger().severe("执行数据库连接测试时发生错误: " + e.getMessage());
+        }
+    }
+    
     public DatabaseManager getDatabase() {
         return databaseManager;
     }

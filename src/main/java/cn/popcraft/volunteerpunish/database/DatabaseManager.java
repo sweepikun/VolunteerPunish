@@ -31,18 +31,26 @@ public class DatabaseManager {
     private void setupDatabase() {
         try {
             if ("sqlite".equalsIgnoreCase(databaseType)) {
+                plugin.getLogger().info("正在初始化 SQLite 数据库...");
                 setupSQLite();
             } else if ("mysql".equalsIgnoreCase(databaseType)) {
+                plugin.getLogger().info("正在初始化 MySQL 数据库...");
                 setupMySQL();
             } else {
-                plugin.getLogger().severe("Unsupported database type: " + databaseType);
+                plugin.getLogger().severe("不支持的数据库类型: " + databaseType);
+                plugin.getLogger().severe("支持的类型: sqlite, mysql");
                 plugin.getServer().getPluginManager().disablePlugin(plugin);
                 return;
             }
             
+            plugin.getLogger().info("正在创建数据库表...");
             createTables();
+            plugin.getLogger().info("数据库初始化完成");
+            
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to setup database", e);
+            plugin.getLogger().log(Level.SEVERE, "数据库初始化失败", e);
+            plugin.getLogger().severe("请检查配置文件中的数据库设置");
+            plugin.getLogger().severe("插件将被禁用");
             plugin.getServer().getPluginManager().disablePlugin(plugin);
         }
     }
@@ -53,22 +61,95 @@ public class DatabaseManager {
         
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl("jdbc:sqlite:" + path);
-        hikariConfig.setConnectionTestQuery("SELECT 1");
-        hikariConfig.setMaximumPoolSize(10);
         
-        dataSource = new HikariDataSource(hikariConfig);
+        // 连接池设置
+        hikariConfig.setMaximumPoolSize(5);
+        hikariConfig.setMinimumIdle(1);
+        hikariConfig.setIdleTimeout(300000);
+        hikariConfig.setMaxLifetime(600000);
+        hikariConfig.setConnectionTimeout(30000);
+        
+        // SQLite特定设置
+        hikariConfig.setConnectionTestQuery("SELECT 1");
+        hikariConfig.addDataSourceProperty("journal_mode", "WAL");
+        hikariConfig.addDataSourceProperty("synchronous", "NORMAL");
+        hikariConfig.addDataSourceProperty("cache_size", "-64000");
+        hikariConfig.addDataSourceProperty("temp_store", "memory");
+        hikariConfig.addDataSourceProperty("mmap_size", "268435456");
+        
+        try {
+            dataSource = new HikariDataSource(hikariConfig);
+            
+            // 测试连接
+            try (Connection testConnection = dataSource.getConnection()) {
+                if (testConnection.isValid(5)) {
+                    plugin.getLogger().info("SQLite 数据库连接成功: " + path);
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("SQLite 数据库连接失败: " + e.getMessage());
+            plugin.getLogger().severe("文件路径: " + path);
+            plugin.getLogger().severe("请检查文件权限和磁盘空间");
+            throw e;
+        }
     }
     
     private void setupMySQL() {
         ConfigManager config = plugin.getConfigManager();
         
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:mysql://" + config.getMysqlHost() + ":" + config.getMysqlPort() + "/" + config.getMysqlDatabase());
+        
+        // 构建完整的 JDBC URL，添加必要的参数
+        String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8mb4&connectTimeout=30000&socketTimeout=60000", 
+            config.getMysqlHost(), 
+            config.getMysqlPort(), 
+            config.getMysqlDatabase());
+        hikariConfig.setJdbcUrl(jdbcUrl);
+        
         hikariConfig.setUsername(config.getMysqlUsername());
         hikariConfig.setPassword(config.getMysqlPassword());
-        hikariConfig.setMaximumPoolSize(10);
         
-        dataSource = new HikariDataSource(hikariConfig);
+        // 连接池设置
+        hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMinimumIdle(2);
+        hikariConfig.setIdleTimeout(300000); // 5分钟
+        hikariConfig.setMaxLifetime(600000); // 10分钟
+        hikariConfig.setConnectionTimeout(30000); // 30秒连接超时
+        hikariConfig.setLeakDetectionThreshold(60000); // 1分钟泄漏检测
+        
+        // 连接测试查询
+        hikariConfig.setConnectionTestQuery("SELECT 1");
+        
+        // MySQL特定属性
+        hikariConfig.addDataSourceProperty("cachePrepStmts", true);
+        hikariConfig.addDataSourceProperty("prepStmtCacheSize", 250);
+        hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", 2048);
+        hikariConfig.addDataSourceProperty("useServerPrepStmts", true);
+        hikariConfig.addDataSourceProperty("useSSL", false);
+        hikariConfig.addDataSourceProperty("allowPublicKeyRetrieval", true);
+        hikariConfig.addDataSourceProperty("characterEncoding", "utf8mb4");
+        
+        try {
+            dataSource = new HikariDataSource(hikariConfig);
+            
+            // 测试连接
+            try (Connection testConnection = dataSource.getConnection()) {
+                if (testConnection.isValid(5)) {
+                    plugin.getLogger().info("MySQL 数据库连接成功");
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("MySQL 数据库连接失败: " + e.getMessage());
+            plugin.getLogger().severe("请检查以下配置:");
+            plugin.getLogger().severe("  - 主机: " + config.getMysqlHost());
+            plugin.getLogger().severe("  - 端口: " + config.getMysqlPort());
+            plugin.getLogger().severe("  - 数据库: " + config.getMysqlDatabase());
+            plugin.getLogger().severe("  - 用户名: " + config.getMysqlUsername());
+            plugin.getLogger().severe("  - 网络连接: 确保MySQL服务器正在运行且端口可访问");
+            plugin.getLogger().severe("  - 防火墙: 确保3306端口已开放");
+            plugin.getLogger().severe("  - 用户权限: 确保数据库用户有正确的访问权限");
+            throw e;
+        }
     }
     
     private void createTables() throws SQLException {
@@ -359,5 +440,22 @@ public class DatabaseManager {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
         }
+    }
+    
+    /**
+     * 测试数据库连接
+     */
+    public CompletableFuture<Boolean> testConnection() {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection()) {
+                return connection.isValid(5);
+            } catch (SQLException e) {
+                plugin.getLogger().severe("数据库连接测试失败: " + e.getMessage());
+                return false;
+            } catch (Exception e) {
+                plugin.getLogger().severe("数据库连接测试时发生错误: " + e.getMessage());
+                return false;
+            }
+        });
     }
 }
