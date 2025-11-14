@@ -8,7 +8,9 @@ import cn.popcraft.volunteerpunish.listener.ChatListener;
 import cn.popcraft.volunteerpunish.listener.PlayerJoinListener;
 import cn.popcraft.volunteerpunish.model.Punishment;
 import cn.popcraft.volunteerpunish.model.Volunteer;
+import org.bukkit.BanList;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -16,6 +18,7 @@ import org.bukkit.scheduler.BukkitTask;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -203,8 +206,8 @@ public class VolunteerPunish extends JavaPlugin {
         }
         
         // 使用Minecraft服务器官方banlist API
-        org.bukkit.BanList banList = getServer().getBanList(org.bukkit.BanList.Type.PROFILE);
-        banList.addBan(uuid.toString(), reason, expiration, "VolunteerPunish Plugin");
+        BanList banList = getServer().getBanList(BanList.Type.NAME);
+        banList.addBan(playerName, reason, expiration, "VolunteerPunish Plugin");
         
         // 如果玩家在线，则将其踢出服务器
         Player onlinePlayer = Bukkit.getPlayer(uuid);
@@ -237,8 +240,8 @@ public class VolunteerPunish extends JavaPlugin {
         String playerName = player.getName() != null ? player.getName() : "Unknown";
         
         // 从Minecraft服务器官方banlist中移除玩家
-        org.bukkit.BanList banList = getServer().getBanList(org.bukkit.BanList.Type.PROFILE);
-        banList.pardon(uuid.toString());
+        BanList banList = getServer().getBanList(BanList.Type.NAME);
+        banList.pardon(playerName);
         
         // 异步停用该玩家的所有封禁记录
         CompletableFuture.runAsync(() -> {

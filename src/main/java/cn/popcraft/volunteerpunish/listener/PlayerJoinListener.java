@@ -46,17 +46,19 @@ public class PlayerJoinListener implements Listener {
             
             if (activeBan != null) {
                 // 玩家被封禁，阻止加入并显示封禁信息
+                // 创建final变量用于lambda表达式
+                final Punishment finalBan = activeBan;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    String banReason = activeBan.getReason() != null ? activeBan.getReason() : "违反服务器规定";
+                    String banReason = finalBan.getReason() != null ? finalBan.getReason() : "违反服务器规定";
                     String duration = "永久";
-                    if (activeBan.getDuration() > 0) {
-                        duration = formatDuration(activeBan.getDuration());
+                    if (finalBan.getDuration() > 0) {
+                        duration = formatDuration(finalBan.getDuration());
                     }
                     
                     String kickMessage = "§c你已被封禁\n" +
                                        "§7原因: " + banReason + "\n" +
                                        "§7时长: " + duration + "\n" +
-                                       "§7封禁者: " + activeBan.getVolunteerId();
+                                       "§7封禁者: " + finalBan.getVolunteerId();
                     
                     player.kickPlayer(ChatColor.translateAlternateColorCodes('&', kickMessage));
                     event.setJoinMessage(null); // 清除加入消息
@@ -78,8 +80,10 @@ public class PlayerJoinListener implements Listener {
                 }
                 
                 if (activeMute != null) {
+                    // 创建final变量用于lambda表达式
+                    final Punishment finalMute = activeMute;
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        showPunishmentNotification(player, activeMute);
+                        showPunishmentNotification(player, finalMute);
                     });
                 }
             }

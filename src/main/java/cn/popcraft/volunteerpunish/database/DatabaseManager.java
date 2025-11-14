@@ -55,7 +55,7 @@ public class DatabaseManager {
         }
     }
     
-    private void setupSQLite() {
+    private void setupSQLite() throws SQLException {
         ConfigManager config = plugin.getConfigManager();
         String path = new File(plugin.getDataFolder(), config.getSqlitePath()).getAbsolutePath();
         
@@ -94,7 +94,7 @@ public class DatabaseManager {
         }
     }
     
-    private void setupMySQL() {
+    private void setupMySQL() throws SQLException {
         ConfigManager config = plugin.getConfigManager();
         
         HikariConfig hikariConfig = new HikariConfig();
