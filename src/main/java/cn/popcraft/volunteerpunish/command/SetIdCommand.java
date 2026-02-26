@@ -52,16 +52,26 @@ public class SetIdCommand extends BaseCommand {
             try {
                 // 获取志愿者信息
                 Volunteer volunteer = plugin.getDatabase().getVolunteerByUuid(targetUuid).join();
-                
+
                 // 如果志愿者不存在，则创建新的志愿者记录
                 if (volunteer == null) {
+                    // 获取默认组
+                    String defaultGroup = plugin.getConfigManager().getDefaultGroupName();
+                    if (defaultGroup == null) {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            sender.sendMessage("§c错误：配置文件中没有定义任何身份组，无法创建志愿者记录");
+                            plugin.getLogger().severe("配置文件中缺少身份组定义，请检查 config.yml");
+                        });
+                        return;
+                    }
+                    
                     volunteer = new Volunteer();
                     volunteer.setUuid(targetUuid);
                     volunteer.setVolunteerId(newVolunteerId);
-                    volunteer.setGroupName("default"); // 默认组
+                    volunteer.setGroupName(defaultGroup); // 使用配置中的默认组
                     volunteer.setDailyBanUsed(0);
                     volunteer.setDailyMuteUsed(0);
-                    
+
                     // 保存新的志愿者记录
                     plugin.getDatabase().saveVolunteer(volunteer).join();
                     

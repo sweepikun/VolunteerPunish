@@ -1,6 +1,7 @@
 package cn.popcraft.volunteerpunish.command;
 
 import cn.popcraft.volunteerpunish.VolunteerPunish;
+import cn.popcraft.volunteerpunish.config.ConfigManager;
 import cn.popcraft.volunteerpunish.model.Punishment;
 import cn.popcraft.volunteerpunish.model.Volunteer;
 import org.bukkit.Bukkit;
@@ -20,23 +21,17 @@ import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 public class VpCommand extends BaseCommand {
-    private final MuteCommand muteCommand;
-    private final UnbanCommand unbanCommand;
-    private final UnmuteCommand unmuteCommand;
     private final HistoryCommand historyCommand;
     private final SetIdCommand setIdCommand;
     private final RemoveIdCommand removeIdCommand;
-    private final GroupCommand groupCommand; // 新增GroupCommand
+    private final GroupCommand groupCommand;
 
     public VpCommand(VolunteerPunish plugin) {
         super(plugin);
-        this.muteCommand = new MuteCommand(plugin);
-        this.unbanCommand = new UnbanCommand(plugin);
-        this.unmuteCommand = new UnmuteCommand(plugin);
         this.historyCommand = new HistoryCommand(plugin);
         this.setIdCommand = new SetIdCommand(plugin);
         this.removeIdCommand = new RemoveIdCommand(plugin);
-        this.groupCommand = new GroupCommand(plugin); // 初始化GroupCommand
+        this.groupCommand = new GroupCommand(plugin);
     }
 
     @Override
@@ -211,18 +206,18 @@ public class VpCommand extends BaseCommand {
         String durationStr = args[2];
         String reason = args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : null;
 
-        // 检查执行者是否为玩家
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§c只有玩家可以执行此命令");
-            return;
-        }
-
-        Player player = (Player) sender;
-        String volunteerId = plugin.getVolunteerId(player.getUniqueId());
-
-        if (volunteerId == null) {
-            sender.sendMessage("§c你不是志愿者，无法执行此命令");
-            return;
+        // 获取执行者ID
+        String executorId = getExecutorId(sender);
+        
+        // 检查执行者是否有权限（玩家需要是志愿者，控制台/OP可以直接执行）
+        if (sender instanceof Player) {
+            Player player = (Player) sender;
+            String volunteerId = plugin.getVolunteerId(player.getUniqueId());
+            if (volunteerId == null && !sender.hasPermission("volunteerpunish.admin.ban")) {
+                sender.sendMessage("§c你不是志愿者，无法执行此命令");
+                return;
+            }
+            executorId = volunteerId != null ? volunteerId : "ADMIN";
         }
 
         // 解析时长
@@ -246,12 +241,16 @@ public class VpCommand extends BaseCommand {
 
         // 获取目标玩家
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
-        if (target == null || !target.hasPlayedBefore()) {
+        if (target == null || (!target.hasPlayedBefore() && target.getUniqueId() == null)) {
             sender.sendMessage("§c玩家不存在: " + targetName);
             return;
         }
 
         UUID targetUuid = target.getUniqueId();
+        if (targetUuid == null) {
+            sender.sendMessage("§c无法获取玩家 " + targetName + " 的UUID");
+            return;
+        }
 
         // 检查目标是否已被封禁
         if (plugin.isBanned(targetUuid)) {
@@ -259,71 +258,71 @@ public class VpCommand extends BaseCommand {
             return;
         }
 
-        // 检查配额
-        CompletableFuture<Boolean> quotaFuture = plugin.checkBanQuota(volunteerId);
-        quotaFuture.thenAccept(hasQuota -> {
-            if (!hasQuota) {
-                Bukkit.getScheduler().runTask(plugin, () -> 
-                    sender.sendMessage("§c你今天的封禁配额已用完"));
-                return;
-            }
-
-            // 创建处罚记录
-            Punishment punishment = new Punishment();
-            punishment.setTargetUuid(targetUuid);
-            punishment.setVolunteerId(volunteerId);
-            punishment.setType(Punishment.Type.BAN);
-            punishment.setDuration(duration);
-            punishment.setReason(reason);
-            punishment.setIssuedAt(new Date());
-            
-            if (duration > 0) {
-                punishment.setExpiresAt(new Date(System.currentTimeMillis() + duration * 1000));
-            }
-
-            // 保存处罚记录
-            CompletableFuture<Void> saveFuture = plugin.getDatabase().savePunishment(punishment);
-            saveFuture.thenRun(() -> {
-                // 增加志愿者的使用计数
-                CompletableFuture<Void> incrementFuture = plugin.incrementBanCount(volunteerId);
-                incrementFuture.thenRun(() -> {
-                    // 执行封禁
-                    String banReason = reason != null ? reason : "违反服务器规定";
-                    plugin.banPlayer(targetUuid, duration > 0 ? duration : null, banReason);
-                    
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage("§a成功封禁玩家 " + targetName + 
-                            (duration > 0 ? (" (" + duration + "秒)") : " (永久)"));
-                    });
-                }).exceptionally(throwable -> {
-                    // 即使增加计数失败，也要确保玩家被封禁
-                    String banReason = reason != null ? reason : "违反服务器规定";
-                    plugin.banPlayer(targetUuid, duration > 0 ? duration : null, banReason);
-                    
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage("§c封禁玩家时发生错误，但玩家已被踢出");
-                        plugin.getLogger().log(Level.SEVERE, "增加志愿者封禁计数时发生错误", throwable);
-                    });
-                    return null;
-                });
-            }).exceptionally(throwable -> {
-                // 即使保存记录失败，也要确保玩家被封禁
-                String banReason = reason != null ? reason : "违反服务器规定";
-                plugin.banPlayer(targetUuid, duration > 0 ? duration : null, banReason);
+        // 原子性检查配额并执行封禁（修复竞态条件）
+        final String finalExecutorId = executorId;
+        plugin.getDatabase().getVolunteerByVolunteerId(executorId)
+            .thenCompose(volunteer -> {
+                if (volunteer == null) {
+                    // 不是志愿者但可能是管理员
+                    return CompletableFuture.completedFuture(true);
+                }
                 
+                // 检查配额
+                ConfigManager.GroupConfig groupConfig = plugin.getConfigManager().getGroups().get(volunteer.getGroupName());
+                if (groupConfig == null) {
+                    return CompletableFuture.completedFuture(false);
+                }
+                
+                boolean hasQuota = volunteer.getDailyBanUsed() < groupConfig.getBanQuota();
+                if (!hasQuota) {
+                    return CompletableFuture.completedFuture(false);
+                }
+                
+                // 先增加计数，确保原子性
+                volunteer.setDailyBanUsed(volunteer.getDailyBanUsed() + 1);
+                return plugin.getDatabase().saveVolunteer(volunteer)
+                    .thenApply(v -> true);
+            })
+            .thenCompose(hasQuota -> {
+                if (!hasQuota) {
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                        sender.sendMessage("§c你今天的封禁配额已用完"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                // 创建处罚记录
+                Punishment punishment = new Punishment();
+                punishment.setTargetUuid(targetUuid);
+                punishment.setVolunteerId(finalExecutorId);
+                punishment.setType(Punishment.Type.BAN);
+                punishment.setDuration(duration);
+                punishment.setReason(reason);
+                punishment.setIssuedAt(new Date());
+
+                if (duration > 0) {
+                    punishment.setExpiresAt(new Date(System.currentTimeMillis() + duration * 1000));
+                }
+
+                // 保存处罚记录并执行封禁
+                return plugin.getDatabase().savePunishment(punishment)
+                    .thenRun(() -> {
+                        // 执行封禁
+                        String banReason = reason != null ? reason : "违反服务器规定";
+                        plugin.banPlayer(targetUuid, duration > 0 ? duration : null, banReason);
+
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            sender.sendMessage("§a成功封禁玩家 " + targetName +
+                                (duration > 0 ? (" (" + duration + "秒)") : " (永久)"));
+                        });
+                    });
+            })
+            .exceptionally(throwable -> {
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage("§c封禁玩家时发生错误，但玩家已被踢出");
-                    plugin.getLogger().log(Level.SEVERE, "保存处罚记录时发生错误", throwable);
+                    sender.sendMessage("§c封禁玩家时发生错误");
+                    plugin.getLogger().log(Level.SEVERE, "封禁玩家时发生错误", throwable);
                 });
                 return null;
             });
-        }).exceptionally(throwable -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                sender.sendMessage("§c封禁玩家时发生错误");
-                plugin.getLogger().log(Level.SEVERE, "检查配额时发生错误", throwable);
-            });
-            return null;
-        });
     }
 
     private void handleMuteCommand(CommandSender sender, String[] args) {
@@ -339,18 +338,18 @@ public class VpCommand extends BaseCommand {
         String durationStr = args[2];
         String reason = args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : null;
 
-        // 检查执行者是否为玩家
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§c只有玩家可以执行此命令");
-            return;
-        }
-
-        Player player = (Player) sender;
-        String volunteerId = plugin.getVolunteerId(player.getUniqueId());
-
-        if (volunteerId == null) {
-            sender.sendMessage("§c你不是志愿者，无法执行此命令");
-            return;
+        // 获取执行者ID
+        String executorId = getExecutorId(sender);
+        
+        // 检查执行者是否有权限（玩家需要是志愿者，控制台/OP可以直接执行）
+        if (sender instanceof Player) {
+            Player player = (Player) sender;
+            String volunteerId = plugin.getVolunteerId(player.getUniqueId());
+            if (volunteerId == null && !sender.hasPermission("volunteerpunish.admin.mute")) {
+                sender.sendMessage("§c你不是志愿者，无法执行此命令");
+                return;
+            }
+            executorId = volunteerId != null ? volunteerId : "ADMIN";
         }
 
         // 解析时长
@@ -374,12 +373,16 @@ public class VpCommand extends BaseCommand {
 
         // 获取目标玩家
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
-        if (target == null || !target.hasPlayedBefore()) {
+        if (target == null || (!target.hasPlayedBefore() && target.getUniqueId() == null)) {
             sender.sendMessage("§c玩家不存在: " + targetName);
             return;
         }
 
         UUID targetUuid = target.getUniqueId();
+        if (targetUuid == null) {
+            sender.sendMessage("§c无法获取玩家 " + targetName + " 的UUID");
+            return;
+        }
 
         // 检查目标是否已被禁言
         if (plugin.isMuted(targetUuid)) {
@@ -387,70 +390,78 @@ public class VpCommand extends BaseCommand {
             return;
         }
 
-        // 检查配额
-        CompletableFuture<Boolean> quotaFuture = plugin.checkMuteQuota(volunteerId);
-        quotaFuture.thenAccept(hasQuota -> {
-            if (!hasQuota) {
-                Bukkit.getScheduler().runTask(plugin, () -> 
-                    sender.sendMessage("§c你今天的禁言配额已用完"));
-                return;
-            }
+        // 原子性检查配额并执行禁言（修复竞态条件）
+        final String finalExecutorId = executorId;
+        plugin.getDatabase().getVolunteerByVolunteerId(executorId)
+            .thenCompose(volunteer -> {
+                if (volunteer == null) {
+                    // 不是志愿者但可能是管理员
+                    return CompletableFuture.completedFuture(true);
+                }
+                
+                // 检查配额
+                ConfigManager.GroupConfig groupConfig = plugin.getConfigManager().getGroups().get(volunteer.getGroupName());
+                if (groupConfig == null) {
+                    return CompletableFuture.completedFuture(false);
+                }
+                
+                boolean hasQuota = volunteer.getDailyMuteUsed() < groupConfig.getMuteQuota();
+                if (!hasQuota) {
+                    return CompletableFuture.completedFuture(false);
+                }
+                
+                // 先增加计数，确保原子性
+                volunteer.setDailyMuteUsed(volunteer.getDailyMuteUsed() + 1);
+                return plugin.getDatabase().saveVolunteer(volunteer)
+                    .thenApply(v -> true);
+            })
+            .thenCompose(hasQuota -> {
+                if (!hasQuota) {
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                        sender.sendMessage("§c你今天的禁言配额已用完"));
+                    return CompletableFuture.completedFuture(null);
+                }
 
-            // 创建处罚记录
-            Punishment punishment = new Punishment();
-            punishment.setTargetUuid(targetUuid);
-            punishment.setVolunteerId(volunteerId);
-            punishment.setType(Punishment.Type.MUTE);
-            punishment.setDuration(duration);
-            punishment.setReason(reason);
-            punishment.setIssuedAt(new Date());
-            
-            if (duration > 0) {
-                punishment.setExpiresAt(new Date(System.currentTimeMillis() + duration * 1000));
-            }
+                // 创建处罚记录
+                Punishment punishment = new Punishment();
+                punishment.setTargetUuid(targetUuid);
+                punishment.setVolunteerId(finalExecutorId);
+                punishment.setType(Punishment.Type.MUTE);
+                punishment.setDuration(duration);
+                punishment.setReason(reason);
+                punishment.setIssuedAt(new Date());
 
-            // 保存处罚记录
-            CompletableFuture<Void> saveFuture = plugin.getDatabase().savePunishment(punishment);
-            saveFuture.thenRun(() -> {
-                // 增加志愿者的使用计数
-                CompletableFuture<Void> incrementFuture = plugin.incrementMuteCount(volunteerId);
-                incrementFuture.thenRun(() -> {
-                    // 执行禁言
-                    plugin.mutePlayer(targetUuid);
-                    
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage("§a成功禁言玩家 " + targetName + 
-                            (duration > 0 ? (" (" + duration + "秒)") : " (永久)"));
-                        
-                        // 如果玩家在线，通知他们
-                        Player onlineTarget = Bukkit.getPlayer(targetUuid);
-                        if (onlineTarget != null && onlineTarget.isOnline()) {
-                            String muteReason = reason != null ? reason : "违反服务器规定";
-                            onlineTarget.sendMessage("§c你已被禁言\n§7原因: " + muteReason + 
-                                (duration > 0 ? ("\n§7时长: " + duration + "秒") : "\n§7类型: 永久禁言"));
-                        }
+                if (duration > 0) {
+                    punishment.setExpiresAt(new Date(System.currentTimeMillis() + duration * 1000));
+                }
+
+                // 保存处罚记录并执行禁言
+                return plugin.getDatabase().savePunishment(punishment)
+                    .thenRun(() -> {
+                        // 执行禁言
+                        plugin.mutePlayer(targetUuid);
+
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            sender.sendMessage("§a成功禁言玩家 " + targetName +
+                                (duration > 0 ? (" (" + duration + "秒)") : " (永久)"));
+
+                            // 如果玩家在线，通知他们
+                            Player onlineTarget = Bukkit.getPlayer(targetUuid);
+                            if (onlineTarget != null && onlineTarget.isOnline()) {
+                                String muteReason = reason != null ? reason : "违反服务器规定";
+                                onlineTarget.sendMessage("§c你已被禁言\n§7原因: " + muteReason +
+                                    (duration > 0 ? ("\n§7时长: " + duration + "秒") : "\n§7类型: 永久禁言"));
+                            }
+                        });
                     });
-                }).exceptionally(throwable -> {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage("§c禁言玩家时发生错误");
-                        plugin.getLogger().log(Level.SEVERE, "增加志愿者禁言计数时发生错误", throwable);
-                    });
-                    return null;
-                });
-            }).exceptionally(throwable -> {
+            })
+            .exceptionally(throwable -> {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     sender.sendMessage("§c禁言玩家时发生错误");
-                    plugin.getLogger().log(Level.SEVERE, "保存处罚记录时发生错误", throwable);
+                    plugin.getLogger().log(Level.SEVERE, "禁言玩家时发生错误", throwable);
                 });
                 return null;
             });
-        }).exceptionally(throwable -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                sender.sendMessage("§c禁言玩家时发生错误");
-                plugin.getLogger().log(Level.SEVERE, "检查配额时发生错误", throwable);
-            });
-            return null;
-        });
     }
 
     private void handleUnbanCommand(CommandSender sender, String[] args) {
@@ -462,28 +473,32 @@ public class VpCommand extends BaseCommand {
 
         String targetName = args[1];
 
-        // 检查执行者是否为玩家
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§c只有玩家可以执行此命令");
-            return;
-        }
-
-        Player player = (Player) sender;
-        String volunteerId = plugin.getVolunteerId(player.getUniqueId());
-
-        if (volunteerId == null) {
-            sender.sendMessage("§c你不是志愿者，无法执行此命令");
-            return;
+        // 获取执行者ID
+        String executorId = getExecutorId(sender);
+        
+        // 检查执行者是否有权限
+        if (sender instanceof Player) {
+            Player player = (Player) sender;
+            String volunteerId = plugin.getVolunteerId(player.getUniqueId());
+            if (volunteerId == null && !sender.hasPermission("volunteerpunish.admin.unban")) {
+                sender.sendMessage("§c你不是志愿者，无法执行此命令");
+                return;
+            }
+            executorId = volunteerId != null ? volunteerId : "ADMIN";
         }
 
         // 获取目标玩家
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
-        if (target == null || !target.hasPlayedBefore()) {
+        if (target == null || (!target.hasPlayedBefore() && target.getUniqueId() == null)) {
             sender.sendMessage("§c玩家不存在: " + targetName);
             return;
         }
 
         UUID targetUuid = target.getUniqueId();
+        if (targetUuid == null) {
+            sender.sendMessage("§c无法获取玩家 " + targetName + " 的UUID");
+            return;
+        }
 
         // 检查目标是否被封禁
         if (!plugin.isBanned(targetUuid)) {
@@ -494,7 +509,7 @@ public class VpCommand extends BaseCommand {
         // 创建解除处罚记录
         Punishment punishment = new Punishment();
         punishment.setTargetUuid(targetUuid);
-        punishment.setVolunteerId(volunteerId);
+        punishment.setVolunteerId(executorId);
         punishment.setType(Punishment.Type.BAN);
         punishment.setDuration(0);
         punishment.setReason("手动解除封禁");
@@ -506,10 +521,10 @@ public class VpCommand extends BaseCommand {
         saveFuture.thenRun(() -> {
             // 执行解封
             plugin.unbanPlayer(targetUuid);
-            
+
             Bukkit.getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a成功解封玩家 " + targetName);
-                
+
                 // 如果玩家在线，通知他们
                 Player onlineTarget = Bukkit.getPlayer(targetUuid);
                 if (onlineTarget != null && onlineTarget.isOnline()) {
@@ -534,28 +549,32 @@ public class VpCommand extends BaseCommand {
 
         String targetName = args[1];
 
-        // 检查执行者是否为玩家
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§c只有玩家可以执行此命令");
-            return;
-        }
-
-        Player player = (Player) sender;
-        String volunteerId = plugin.getVolunteerId(player.getUniqueId());
-
-        if (volunteerId == null) {
-            sender.sendMessage("§c你不是志愿者，无法执行此命令");
-            return;
+        // 获取执行者ID
+        String executorId = getExecutorId(sender);
+        
+        // 检查执行者是否有权限
+        if (sender instanceof Player) {
+            Player player = (Player) sender;
+            String volunteerId = plugin.getVolunteerId(player.getUniqueId());
+            if (volunteerId == null && !sender.hasPermission("volunteerpunish.admin.unmute")) {
+                sender.sendMessage("§c你不是志愿者，无法执行此命令");
+                return;
+            }
+            executorId = volunteerId != null ? volunteerId : "ADMIN";
         }
 
         // 获取目标玩家
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
-        if (target == null || !target.hasPlayedBefore()) {
+        if (target == null || (!target.hasPlayedBefore() && target.getUniqueId() == null)) {
             sender.sendMessage("§c玩家不存在: " + targetName);
             return;
         }
 
         UUID targetUuid = target.getUniqueId();
+        if (targetUuid == null) {
+            sender.sendMessage("§c无法获取玩家 " + targetName + " 的UUID");
+            return;
+        }
 
         // 检查目标是否被禁言
         if (!plugin.isMuted(targetUuid)) {
@@ -566,7 +585,7 @@ public class VpCommand extends BaseCommand {
         // 创建解除处罚记录
         Punishment punishment = new Punishment();
         punishment.setTargetUuid(targetUuid);
-        punishment.setVolunteerId(volunteerId);
+        punishment.setVolunteerId(executorId);
         punishment.setType(Punishment.Type.MUTE);
         punishment.setDuration(0);
         punishment.setReason("手动解除禁言");
@@ -578,10 +597,10 @@ public class VpCommand extends BaseCommand {
         saveFuture.thenRun(() -> {
             // 执行解除禁言
             plugin.unmutePlayer(targetUuid);
-            
+
             Bukkit.getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a成功解除玩家 " + targetName + " 的禁言");
-                
+
                 // 如果玩家在线，通知他们
                 Player onlineTarget = Bukkit.getPlayer(targetUuid);
                 if (onlineTarget != null && onlineTarget.isOnline()) {

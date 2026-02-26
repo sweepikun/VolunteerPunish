@@ -134,6 +134,22 @@ public class ConfigManager {
         return groups;
     }
     
+    /**
+     * 获取默认组名称
+     * 如果没有配置组，则返回 null
+     * 如果有配置的组，返回第一个组作为默认组
+     */
+    public String getDefaultGroupName() {
+        if (groups.isEmpty()) {
+            return null;
+        }
+        // 优先返回名为 "default" 的组，如果没有则返回第一个组
+        if (groups.containsKey("default")) {
+            return "default";
+        }
+        return groups.keySet().iterator().next();
+    }
+    
     public boolean isEnableDailyReset() {
         return enableDailyReset;
     }

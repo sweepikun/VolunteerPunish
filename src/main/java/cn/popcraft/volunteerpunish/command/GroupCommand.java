@@ -18,32 +18,32 @@ public class GroupCommand extends BaseCommand {
 
     @Override
     protected void execute(CommandSender sender, Command command, String label, String[] args) {
-        // 检查是否是玩家执行命令
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§c只有玩家可以执行此命令");
-            return;
-        }
-
-        Player player = (Player) sender;
-        
         // 如果是查询自己的组
         if (args.length == 1) {
+            // 检查是否是玩家执行命令
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§c控制台无法查询自己的身份组，请使用 /vp group <志愿者ID> <组名>");
+                return;
+            }
+            
+            Player player = (Player) sender;
+            
             // 异步获取志愿者信息
             CompletableFuture.runAsync(() -> {
                 try {
                     Volunteer volunteer = plugin.getDatabase().getVolunteerByUuid(player.getUniqueId()).join();
-                    
+
                     // 在主线程中发送消息
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (volunteer == null) {
                             player.sendMessage("§c你不是志愿者");
                         } else {
                             player.sendMessage("§a你的身份组: §e" + volunteer.getGroupName());
-                            
+
                             // 显示组的详细信息
                             ConfigManager.GroupConfig groupConfig = plugin.getConfigManager().getGroups()
-                                    .get(volunteer.getGroupName());
-                            
+                                .get(volunteer.getGroupName());
+
                             if (groupConfig != null) {
                                 player.sendMessage("§a封禁配额: §e" + volunteer.getDailyBanUsed() + "/" + groupConfig.getBanQuota());
                                 player.sendMessage("§a禁言配额: §e" + volunteer.getDailyMuteUsed() + "/" + groupConfig.getMuteQuota());
@@ -59,7 +59,7 @@ public class GroupCommand extends BaseCommand {
             });
             return;
         }
-        
+
         // 如果是管理员操作修改他人组
         if (args.length == 3) {
             // 检查权限
@@ -67,35 +67,35 @@ public class GroupCommand extends BaseCommand {
                 sender.sendMessage("§c你没有权限执行此命令");
                 return;
             }
-            
+
             String targetName = args[1];
             String newGroupName = args[2];
-            
+
             // 检查组是否存在
             if (!plugin.getConfigManager().getGroups().containsKey(newGroupName)) {
                 sender.sendMessage("§c身份组不存在: " + newGroupName);
                 sender.sendMessage("§c可用的身份组: " + String.join(", ", plugin.getConfigManager().getGroups().keySet()));
                 return;
             }
-            
+
             // 异步处理修改组
             CompletableFuture.runAsync(() -> {
                 try {
                     // 获取目标玩家的志愿者信息
                     Volunteer volunteer = plugin.getDatabase().getVolunteerByVolunteerId(targetName).join();
-                    
+
                     if (volunteer == null) {
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
                             sender.sendMessage("§c未找到志愿者: " + targetName);
                         });
                         return;
                     }
-                    
+
                     // 更新组
                     String oldGroup = volunteer.getGroupName();
                     volunteer.setGroupName(newGroupName);
                     plugin.getDatabase().saveVolunteer(volunteer).join();
-                    
+
                     // 在主线程中发送消息
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         sender.sendMessage("§a成功将志愿者 " + targetName + " 的身份组从 " + oldGroup + " 更改为 " + newGroupName);
@@ -109,7 +109,7 @@ public class GroupCommand extends BaseCommand {
             });
             return;
         }
-        
+
         // 显示帮助信息
         sender.sendMessage("§c用法:");
         sender.sendMessage("§c/vp group - 查看自己的身份组");

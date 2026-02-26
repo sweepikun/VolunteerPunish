@@ -143,12 +143,25 @@ public class VolunteerPunish extends JavaPlugin {
     }
     
     // 实现获取志愿者ID的逻辑
+    public CompletableFuture<String> getVolunteerIdAsync(UUID uuid) {
+        if (!isPluginEnabled) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        return databaseManager.getVolunteerByUuid(uuid)
+            .thenApply(volunteer -> volunteer != null ? volunteer.getVolunteerId() : null)
+            .exceptionally(throwable -> {
+                getLogger().severe("获取志愿者ID时发生错误: " + throwable.getMessage());
+                return null;
+            });
+    }
+    
+    // 同步获取志愿者ID（仅用于需要同步的场景）
     public String getVolunteerId(UUID uuid) {
         if (!isPluginEnabled) {
             return null;
         }
         
-        // 同步等待获取志愿者信息
         try {
             Volunteer volunteer = databaseManager.getVolunteerByUuid(uuid).join();
             return volunteer != null ? volunteer.getVolunteerId() : null;
@@ -157,7 +170,19 @@ public class VolunteerPunish extends JavaPlugin {
             return null;
         }
     }
-    
+
+    public CompletableFuture<Boolean> isBannedAsync(UUID uuid) {
+        if (!isPluginEnabled) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        return databaseManager.isBanned(uuid)
+            .exceptionally(throwable -> {
+                getLogger().severe("检查玩家是否被封禁时发生错误: " + throwable.getMessage());
+                return false;
+            });
+    }
+
     public boolean isBanned(UUID uuid) {
         if (!isPluginEnabled) {
             return false;
@@ -171,7 +196,19 @@ public class VolunteerPunish extends JavaPlugin {
             return false;
         }
     }
-    
+
+    public CompletableFuture<Boolean> isMutedAsync(UUID uuid) {
+        if (!isPluginEnabled) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        return databaseManager.isMuted(uuid)
+            .exceptionally(throwable -> {
+                getLogger().severe("检查玩家是否被禁言时发生错误: " + throwable.getMessage());
+                return false;
+            });
+    }
+
     public boolean isMuted(UUID uuid) {
         if (!isPluginEnabled) {
             return false;

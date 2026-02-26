@@ -166,32 +166,32 @@ public class DatabaseManager {
                         "last_reset DATETIME DEFAULT CURRENT_TIMESTAMP" +
                         ")";
                 
-                // SQLite 使用不同的自增语法
-                if ("sqlite".equalsIgnoreCase(databaseType)) {
-                    createVolunteersTable = createVolunteersTable.replace("AUTO_INCREMENT", "");
-                }
-                
-                statement.executeUpdate(createVolunteersTable);
+            // SQLite 使用不同的自增语法（SQLite 实际上是 AUTOINCREMENT 但不需要声明）
+            if ("sqlite".equalsIgnoreCase(databaseType)) {
+                createVolunteersTable = createVolunteersTable.replace("AUTO_INCREMENT", "");
             }
-            
-            // 创建 punishments 表
-            try (Statement statement = connection.createStatement()) {
-                String createPunishmentsTable = "CREATE TABLE IF NOT EXISTS punishments (" +
-                        "id INTEGER PRIMARY KEY AUTO_INCREMENT, " +
-                        "target_uuid VARCHAR(36) NOT NULL, " +
-                        "volunteer_id VARCHAR(8) NOT NULL, " +
-                        "type VARCHAR(10) NOT NULL, " +
-                        "duration INTEGER NOT NULL, " +
-                        "reason TEXT, " +
-                        "issued_at DATETIME NOT NULL, " +
-                        "expires_at DATETIME, " +
-                        "is_active BOOLEAN NOT NULL DEFAULT TRUE" +
-                        ")";
-                
-                // SQLite 使用不同的自增语法
-                if ("sqlite".equalsIgnoreCase(databaseType)) {
-                    createPunishmentsTable = createPunishmentsTable.replace("AUTO_INCREMENT", "");
-                }
+
+            statement.executeUpdate(createVolunteersTable);
+        }
+
+        // 创建 punishments 表
+        try (Statement statement = connection.createStatement()) {
+            String createPunishmentsTable = "CREATE TABLE IF NOT EXISTS punishments (" +
+                "id INTEGER PRIMARY KEY AUTO_INCREMENT, " +
+                "target_uuid VARCHAR(36) NOT NULL, " +
+                "volunteer_id VARCHAR(8) NOT NULL, " +
+                "type VARCHAR(10) NOT NULL, " +
+                "duration INTEGER NOT NULL, " +
+                "reason TEXT, " +
+                "issued_at DATETIME NOT NULL, " +
+                "expires_at DATETIME, " +
+                "is_active BOOLEAN NOT NULL DEFAULT TRUE" +
+            ")";
+
+            // SQLite 使用不同的自增语法（SQLite 实际上是 AUTOINCREMENT 但不需要声明）
+            if ("sqlite".equalsIgnoreCase(databaseType)) {
+                createPunishmentsTable = createPunishmentsTable.replace("AUTO_INCREMENT", "");
+            }
                 
                 statement.executeUpdate(createPunishmentsTable);
             }
