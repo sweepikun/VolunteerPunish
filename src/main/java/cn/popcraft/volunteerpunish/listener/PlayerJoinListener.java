@@ -5,6 +5,8 @@ import cn.popcraft.volunteerpunish.config.ConfigManager;
 import cn.popcraft.volunteerpunish.model.Punishment;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.BanList;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -27,26 +29,38 @@ public class PlayerJoinListener implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        
-        // 检查玩家是否被封禁
+
+        BanList banList = plugin.getServer().getBanList(BanList.Type.NAME);
+        if (banList.isBanned(player.getName())) {
+            org.bukkit.BanEntry banEntry = banList.getBanEntry(player.getName());
+            String banReason = banEntry != null && banEntry.getReason() != null ? banEntry.getReason() : "违反服务器规定";
+            String kickMessage = "§c你已被封禁\n§7原因: " + banReason;
+            
+            if (banEntry != null && banEntry.getExpiration() != null) {
+                kickMessage += "\n§7解封时间: " + dateFormat.format(banEntry.getExpiration());
+            } else {
+                kickMessage += "\n§7类型: 永久封禁";
+            }
+            
+            player.kickPlayer(ChatColor.translateAlternateColorCodes('&', kickMessage));
+            event.setJoinMessage(null);
+            return;
+        }
+
         CompletableFuture<List<Punishment>> future = plugin.getDatabase().getPunishmentsByTargetUuid(player.getUniqueId());
-        
+
         future.thenAccept(punishments -> {
-            // 查找活跃的封禁处罚
             Punishment activeBan = null;
             for (Punishment punishment : punishments) {
                 if (punishment.getType() == Punishment.Type.BAN && punishment.isActive()) {
-                    // 检查是否已过期
                     if (punishment.getExpiresAt() == null || punishment.getExpiresAt().after(new Date())) {
                         activeBan = punishment;
                         break;
                     }
                 }
             }
-            
+
             if (activeBan != null) {
-                // 玩家被封禁，阻止加入并显示封禁信息
-                // 创建final变量用于lambda表达式
                 final Punishment finalBan = activeBan;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     String banReason = finalBan.getReason() != null ? finalBan.getReason() : "违反服务器规定";
@@ -54,33 +68,30 @@ public class PlayerJoinListener implements Listener {
                     if (finalBan.getDuration() > 0) {
                         duration = formatDuration(finalBan.getDuration());
                     }
-                    
+
                     String kickMessage = "§c你已被封禁\n" +
-                                       "§7原因: " + banReason + "\n" +
-                                       "§7时长: " + duration + "\n" +
-                                       "§7封禁者: " + finalBan.getVolunteerId();
-                    
+                            "§7原因: " + banReason + "\n" +
+                            "§7时长: " + duration + "\n" +
+                            "§7封禁者: " + finalBan.getVolunteerId();
+
                     player.kickPlayer(ChatColor.translateAlternateColorCodes('&', kickMessage));
-                    event.setJoinMessage(null); // 清除加入消息
+                    event.setJoinMessage(null);
                 });
                 return;
             }
-            
-            // 如果没有封禁但有其他处罚（如禁言），则显示通知
+
             if (plugin.getConfigManager().isEnableLoginNotification()) {
                 Punishment activeMute = null;
                 for (Punishment punishment : punishments) {
                     if (punishment.getType() == Punishment.Type.MUTE && punishment.isActive()) {
-                        // 检查是否已过期
                         if (punishment.getExpiresAt() == null || punishment.getExpiresAt().after(new Date())) {
                             activeMute = punishment;
                             break;
                         }
                     }
                 }
-                
+
                 if (activeMute != null) {
-                    // 创建final变量用于lambda表达式
                     final Punishment finalMute = activeMute;
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         showPunishmentNotification(player, finalMute);

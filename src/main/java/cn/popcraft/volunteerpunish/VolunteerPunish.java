@@ -187,8 +187,15 @@ public class VolunteerPunish extends JavaPlugin {
         if (!isPluginEnabled) {
             return false;
         }
-        
-        // 同步检查玩家是否被封禁
+
+        OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+        if (player.getName() != null) {
+            BanList banList = getServer().getBanList(BanList.Type.NAME);
+            if (banList.isBanned(player.getName())) {
+                return true;
+            }
+        }
+
         try {
             return databaseManager.isBanned(uuid).join();
         } catch (Exception e) {
@@ -271,32 +278,29 @@ public class VolunteerPunish extends JavaPlugin {
         if (!isPluginEnabled) {
             return;
         }
-        
-        // 获取玩家信息用于日志
+
         OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
         String playerName = player.getName() != null ? player.getName() : "Unknown";
-        
-        // 从Minecraft服务器官方banlist中移除玩家
+
         BanList banList = getServer().getBanList(BanList.Type.NAME);
-        banList.pardon(playerName);
-        
-        // 异步停用该玩家的所有封禁记录
-        CompletableFuture.runAsync(() -> {
-            try {
-                databaseManager.deactivatePunishments(uuid, Punishment.Type.BAN).join();
-                
-                // 如果玩家在线，发送解封通知
-                Player onlinePlayer = Bukkit.getPlayer(uuid);
-                if (onlinePlayer != null && onlinePlayer.isOnline()) {
-                    getServer().getScheduler().runTask(this, () -> 
-                        onlinePlayer.sendMessage("§a你已被解封"));
-                }
-                
-                getLogger().info("已解封玩家: " + playerName + " (" + uuid + ")");
-            } catch (Exception e) {
-                getLogger().severe("解封玩家时发生错误: " + e.getMessage());
+        if (playerName != null && !"Unknown".equals(playerName)) {
+            banList.pardon(playerName);
+        }
+
+        banList = getServer().getBanList(BanList.Type.IP);
+
+        try {
+            databaseManager.deactivatePunishments(uuid, Punishment.Type.BAN).join();
+
+            Player onlinePlayer = Bukkit.getPlayer(uuid);
+            if (onlinePlayer != null && onlinePlayer.isOnline()) {
+                onlinePlayer.sendMessage("§a你已被解封");
             }
-        });
+
+            getLogger().info("已解封玩家: " + playerName + " (" + uuid + ")");
+        } catch (Exception e) {
+            getLogger().severe("解封玩家时发生错误: " + e.getMessage());
+        }
     }
     
     public void unmutePlayer(UUID uuid) {
